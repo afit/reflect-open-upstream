@@ -43,11 +43,14 @@ pub struct PushOutcome {
 ///
 /// With a token (the managed GitHub path) it is HTTPS basic auth as
 /// `x-access-token` — never offered for any other credential type, so a
-/// token can never leak to a transport we didn't intend. Without one
-/// (generic remotes, Plan 16 V1) the chain is: answer a bare username probe,
-/// then offer the SSH agent exactly once — libgit2 re-invokes the callback
-/// after a rejection, and re-offering the same agent would loop forever, so
-/// the second ask becomes the actionable error. Generic HTTPS fails fast
+/// token can never leak to a transport we didn't intend, and offered only
+/// **once**: libgit2 invokes this callback a single time for a credential
+/// the host accepts (including across a push's two requests, which reuse
+/// the connection's credential) but re-invokes it without bound for one the
+/// host rejects. A second ask is therefore always a rejection, and
+/// re-answering it would loop forever. Without a token (generic remotes,
+/// Plan 16 V1) the chain is: answer a bare username probe, then offer the
+/// SSH agent exactly once, for the same reason; generic HTTPS fails fast
 /// until V2 adds credential-helper resolution. Errors carry
 /// `ErrorCode::Auth` so they classify as `AppError::Auth` (surfaced as
 /// needs-attention, not retried blindly).
@@ -56,6 +59,7 @@ fn resolve_credential(
     username_from_url: Option<&str>,
     allowed: CredentialType,
     ssh_agent_tried: &mut bool,
+    userpass_tried: &mut bool,
 ) -> Result<Cred, git2::Error> {
     use git2::{ErrorClass, ErrorCode};
     if let Some(token) = token {
@@ -66,6 +70,14 @@ fn resolve_credential(
                 "the remote requires an unsupported credential type (token sign-in is HTTPS-only)",
             ));
         }
+        if *userpass_tried {
+            return Err(git2::Error::new(
+                ErrorCode::Auth,
+                ErrorClass::Http,
+                "github.com rejected the sign-in token — check Reflect still has access to this repository, or sign out and back in",
+            ));
+        }
+        *userpass_tried = true;
         return Cred::userpass_plaintext("x-access-token", token);
     }
     // SSH asks in two rounds: first the username alone (`ssh://host/…` URLs
@@ -104,12 +116,14 @@ fn resolve_credential(
 fn callbacks_with_credentials<'cb>(token: Option<String>) -> RemoteCallbacks<'cb> {
     let mut callbacks = RemoteCallbacks::new();
     let mut ssh_agent_tried = false;
+    let mut userpass_tried = false;
     callbacks.credentials(move |_url, username_from_url, allowed| {
         resolve_credential(
             token.as_deref(),
             username_from_url,
             allowed,
             &mut ssh_agent_tried,
+            &mut userpass_tried,
         )
     });
     callbacks
@@ -277,11 +291,13 @@ mod credential_tests {
     #[test]
     fn token_authenticates_https() {
         let mut tried = false;
+        let mut userpass = false;
         expect_ok(resolve_credential(
             Some("ghs_token"),
             None,
             CredentialType::USER_PASS_PLAINTEXT,
             &mut tried,
+            &mut userpass,
         ));
     }
 
@@ -290,11 +306,13 @@ mod credential_tests {
         // A github.com remote rewired to ssh, or any future transport, must
         // not receive the managed token as some other credential shape.
         let mut tried = false;
+        let mut userpass = false;
         let err = expect_err(resolve_credential(
             Some("ghs_token"),
             Some("git"),
             CredentialType::SSH_KEY,
             &mut tried,
+            &mut userpass,
         ));
         assert_eq!(err.code(), ErrorCode::Auth);
         assert!(err.message().contains("HTTPS-only"), "{err}");
@@ -304,11 +322,13 @@ mod credential_tests {
     #[test]
     fn ssh_username_probe_is_answered() {
         let mut tried = false;
+        let mut userpass = false;
         expect_ok(resolve_credential(
             None,
             None,
             CredentialType::USERNAME,
             &mut tried,
+            &mut userpass,
         ));
         assert!(!tried);
     }
@@ -318,11 +338,13 @@ mod credential_tests {
         // libgit2 re-invokes the callback after a rejected credential; the
         // second ask must become the actionable error, not an infinite loop.
         let mut tried = false;
+        let mut userpass = false;
         expect_ok(resolve_credential(
             None,
             Some("git"),
             CredentialType::SSH_KEY,
             &mut tried,
+            &mut userpass,
         ));
         assert!(tried);
 
@@ -331,6 +353,7 @@ mod credential_tests {
             Some("git"),
             CredentialType::SSH_KEY,
             &mut tried,
+            &mut userpass,
         ));
         assert_eq!(err.code(), ErrorCode::Auth);
         assert!(err.message().contains("ssh-add"), "{err}");
@@ -341,11 +364,13 @@ mod credential_tests {
         // Plan 16 V1: no credential-helper resolution yet — an honest error
         // beats a half-try that dies somewhere less explicable.
         let mut tried = false;
+        let mut userpass = false;
         let err = expect_err(resolve_credential(
             None,
             None,
             CredentialType::USER_PASS_PLAINTEXT,
             &mut tried,
+            &mut userpass,
         ));
         assert_eq!(err.code(), ErrorCode::Auth);
         assert!(err.message().contains("SSH remote URL"), "{err}");
@@ -354,12 +379,129 @@ mod credential_tests {
     #[test]
     fn unsupported_credential_types_error_with_auth() {
         let mut tried = false;
+        let mut userpass = false;
         let err = expect_err(resolve_credential(
             None,
             None,
             CredentialType::SSH_INTERACTIVE,
             &mut tried,
+            &mut userpass,
         ));
         assert_eq!(err.code(), ErrorCode::Auth);
+    }
+}
+
+#[cfg(test)]
+mod credential_loop_tests {
+    //! The guard exists because of how libgit2 behaves, not how we do, so
+    //! testing it needs a real HTTP exchange. The other git tests use path
+    //! remotes, which never invoke the credential callback at all.
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use super::fetch;
+
+    /// pkt-line framing: four hex digits of total length, then the payload.
+    fn pkt(payload: &str) -> String {
+        format!("{:04x}{payload}", payload.len() + 4)
+    }
+
+    /// The smart-HTTP ref advertisement for an empty repository — enough for
+    /// libgit2 to consider a fetch complete.
+    fn empty_advertisement() -> String {
+        format!(
+            "{}0000{}0000",
+            pkt("# service=git-upload-pack\n"),
+            pkt("0000000000000000000000000000000000000000 capabilities^{}\0side-band-64k\n"),
+        )
+    }
+
+    /// Serve one connection: challenge every unauthenticated request, then
+    /// accept or reject the authenticated retry per `accepts`. Keep-alive
+    /// matters: libgit2 retries a rejected credential on the same connection,
+    /// so a server that hung up after one response would look like a network
+    /// fault rather than a rejection.
+    fn serve(stream: &mut TcpStream, accepts: bool, challenges: &AtomicUsize) {
+        let mut buffer = [0_u8; 4096];
+        loop {
+            let read = match stream.read(&mut buffer) {
+                Ok(0) | Err(_) => return,
+                Ok(read) => read,
+            };
+            let authenticated =
+                String::from_utf8_lossy(&buffer[..read]).contains("Authorization: Basic ");
+            let response = if authenticated && accepts {
+                let body = empty_advertisement();
+                format!(
+                    "HTTP/1.1 200 OK\r\n\
+                     Content-Type: application/x-git-upload-pack-advertisement\r\n\
+                     Content-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+            } else {
+                challenges.fetch_add(1, Ordering::SeqCst);
+                "HTTP/1.1 401 Unauthorized\r\n\
+                 WWW-Authenticate: Basic realm=\"test\"\r\n\
+                 Content-Length: 0\r\n\r\n"
+                    .to_string()
+            };
+            if stream.write_all(response.as_bytes()).is_err() || stream.flush().is_err() {
+                return;
+            }
+        }
+    }
+
+    /// A loopback git host that accepts or rejects every credential, and the
+    /// count of challenges it issued.
+    fn spawn_server(accepts: bool) -> (String, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let challenges = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&challenges);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                serve(&mut stream, accepts, &counter);
+            }
+        });
+        (format!("http://127.0.0.1:{port}/probe.git"), challenges)
+    }
+
+    fn repo_with_origin(url: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        repo.remote("origin", url).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_rejected_token_is_offered_once_then_fails_actionably() {
+        let (url, challenges) = spawn_server(false);
+        let dir = repo_with_origin(&url);
+
+        let error = fetch(dir.path(), Some("rejected-token".to_string()))
+            .expect_err("a rejected token must not succeed");
+
+        // Without the guard this never returns. Two challenges = answered
+        // once, rejected, then refused to answer again.
+        assert_eq!(challenges.load(Ordering::SeqCst), 2);
+        assert!(
+            format!("{error:?}").contains("rejected the sign-in token"),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn an_accepted_token_is_asked_for_once() {
+        let (url, challenges) = spawn_server(true);
+        let dir = repo_with_origin(&url);
+
+        // Self-proving: had libgit2 asked a second time on the success path,
+        // the guard would have fired and this would be Err.
+        fetch(dir.path(), Some("accepted-token".to_string()))
+            .expect("an accepted token must get through the guard");
+        assert_eq!(challenges.load(Ordering::SeqCst), 1);
     }
 }

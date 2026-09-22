@@ -45,6 +45,8 @@ export {
   type SyncEngineOptions,
   type SyncErrorKind,
   type SyncStatus,
+  githubCredential,
+  type GitCredential,
 } from '../sync/index.ts'
 export {
   frontmatterSchema,

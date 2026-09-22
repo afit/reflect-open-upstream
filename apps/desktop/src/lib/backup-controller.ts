@@ -14,6 +14,7 @@ import {
   gitStatus,
   isCaptureSpoolPath,
   isNotePath,
+  githubCredential,
   loadGithubAuth,
   parseGithubRemote,
   ReflectError,
@@ -262,7 +263,7 @@ export function createBackupController(options: BackupControllerOptions): Backup
       const next = createSyncEngine({
         generation,
         localOnly: true,
-        getToken: async () => null,
+        getCredential: async () => null,
         onStatus: (engineStatus) => {
           // No UI surfaces local history, so a failing commit loop (disk full,
           // corrupted repo) must at least leave a trace for diagnosis.
@@ -349,9 +350,18 @@ export function createBackupController(options: BackupControllerOptions): Backup
         // The background flusher's protected local commit bypasses this
         // engine deliberately.
         canStartCycle: () => !isMobileSurface() || document.visibilityState !== 'hidden',
-        // The managed token is for github.com only — a generic host must
-        // never receive it. Rust resolves generic credentials locally.
-        getToken: repo === null ? async () => null : () => getGithubToken(providerFetch),
+        // The managed token is for github.com only — another host must
+        // never receive it, and its own keychain entry never reaches
+        // github.com. The tagged credential makes that structural.
+        getCredential:
+          repo === null
+            ? async () => null
+            : async () => {
+                // A null token is "signed out" — the engine turns that into
+                // the same auth state it always did, not a silent no-auth push.
+                const token = await getGithubToken(providerFetch)
+                return token === null ? null : githubCredential(token)
+              },
         onStatus: (engineStatus) => {
           setState({ phase: 'connected', remoteUrl, repo, status: engineStatus })
         },

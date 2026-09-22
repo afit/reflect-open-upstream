@@ -45,7 +45,13 @@ export {
   type SyncEngineOptions,
   type SyncErrorKind,
   type SyncStatus,
+  remoteCredentialOrigin,
   githubCredential,
+  isValidGitCredential,
+  gitCredentialSecretName,
+  loadGitCredential,
+  saveGitCredential,
+  deleteGitCredential,
   type GitCredential,
 } from '../sync/index.ts'
 export {

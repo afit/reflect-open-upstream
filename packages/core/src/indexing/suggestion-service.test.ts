@@ -99,7 +99,7 @@ describe('suggestWikiTargets', () => {
   it('finds titles that differ only in accents, below the spelled matches', async () => {
     const database = seeded([
       { path: 'notes/eliska.md', markdown: '# Eliška Nováková\n' },
-      { path: 'notes/elisk-notes.md', markdown: '# Elisk notes\n' },
+      { path: 'notes/zelisk-notes.md', markdown: '# Zelisk notes\n' },
       { path: 'notes/sarka.md', markdown: '# Šárka\n' },
       { path: 'notes/body.md', markdown: '# Unrelated\nEliška is only in the body.\n' },
       { path: 'templates/eliska.md', markdown: '# Eliška template\n' },
@@ -110,10 +110,13 @@ describe('suggestWikiTargets', () => {
       return rows.map((row) => row.path)
     }
 
-    await expect(paths('elisk')).resolves.toEqual(['notes/elisk-notes.md', 'notes/eliska.md'])
+    // A mid-word spelled match still ranks above an accent-only one; by title,
+    // `Eliška` would sort first.
+    await expect(paths('elisk')).resolves.toEqual(['notes/zelisk-notes.md', 'notes/eliska.md'])
     await expect(paths('eliska nov')).resolves.toEqual(['notes/eliska.md'])
     await expect(paths('nova eliska')).resolves.toEqual([])
-    // A single character only matches as spelled.
-    await expect(paths('s')).resolves.toEqual(['notes/elisk-notes.md'])
+    // A one-letter prefix only matches as spelled, punctuation aside.
+    await expect(paths('s')).resolves.toEqual(['notes/zelisk-notes.md'])
+    await expect(paths('s-')).resolves.toEqual([])
   })
 })

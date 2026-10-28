@@ -162,10 +162,9 @@ async function queryWikiTargetCandidates(
   // however long ago its file was last edited. An exact hit is always kept.
   // The search index also admits titles that differ only in accents (`elisk`
   // finds `Eliška`); those rank below spelled hits, so spelled hits fill the
-  // pool first. A single character is left to LIKE: as a prefix it expands to
-  // most of the index's vocabulary, which is slow on every first keystroke.
+  // pool first.
   const contains = sql<boolean>`title_key LIKE ${likeContains(key)} ESCAPE '\\'`
-  const ftsMatch = [...key].length > 1 ? buildFtsTitlePrefixMatch(key) : null
+  const ftsMatch = buildFtsTitlePrefixMatch(key)
   let titleQuery = db
     .selectFrom('notes')
     .where('kind', '!=', 'template')

@@ -28,6 +28,9 @@ export function splitSearchTerms(query: string): string[] {
  */
 const FTS_TOKEN_CHAR_RE = /[\p{L}\p{N}\p{Co}]/u
 
+/** A run of characters `unicode61` treats as a token separator. */
+const FTS_TOKEN_SEPARATOR_RE = /[^\p{L}\p{N}\p{Co}]+/u
+
 /** Wrap a term as an FTS5 string literal, doubling quotes (FTS5's own escape). */
 function quoteFtsLiteral(term: string): string {
   return `"${term.replaceAll('"', '""')}"`
@@ -80,11 +83,14 @@ export function buildFtsMatch(query: string): string | null {
 
 /**
  * Build an FTS5 `MATCH` expression for titles containing `text` as a phrase
- * whose last word may be a prefix, or `null` when `unicode61` finds no token
- * in it. The tokenizer drops diacritics, so `elisk` matches `Eliška`.
+ * whose last word may be a prefix. The tokenizer drops diacritics, so `elisk`
+ * matches `Eliška`. `null` unless that last word, as `unicode61` sees it, has
+ * at least two characters: a one-letter prefix (`a`, or the `c` left of `c++`)
+ * expands to most of the index's vocabulary, which is slow on every keystroke.
  */
 export function buildFtsTitlePrefixMatch(text: string): string | null {
-  return isTokenizable(text) ? `title : ${quoteFtsLiteral(text)}*` : null
+  const lastToken = text.split(FTS_TOKEN_SEPARATOR_RE).findLast(Boolean) ?? ''
+  return [...lastToken].length > 1 ? `title : ${quoteFtsLiteral(text)}*` : null
 }
 
 /**

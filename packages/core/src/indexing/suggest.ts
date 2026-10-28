@@ -129,17 +129,21 @@ function matchesWordStart(key: string, candidateKey: string): boolean {
 }
 
 /**
- * Lower ranks first: exact (0) < word start (2) < mid-word (3); 4 = empty
- * query. Rank 1 is left for an exact alias hit.
+ * Lower ranks first: exact (0) < word start (2) < mid-word (3) < found only by
+ * the search index, which ignores accents (4); 5 = empty query. Rank 1 is
+ * left for an exact alias hit.
  */
 function matchRank(key: string, candidateKey: string): number {
   if (key === '') {
-    return 4
+    return 5
   }
   if (candidateKey === key) {
     return 0
   }
-  return matchesWordStart(key, candidateKey) ? 2 : 3
+  if (matchesWordStart(key, candidateKey)) {
+    return 2
+  }
+  return candidateKey.includes(key) ? 3 : 4
 }
 
 /**

@@ -95,4 +95,25 @@ describe('suggestWikiTargets', () => {
 
     expect(result.map((row) => row.path)).toEqual(['notes/journal-log.md'])
   })
+
+  it('finds titles that differ only in accents, below the spelled matches', async () => {
+    const database = seeded([
+      { path: 'notes/eliska.md', markdown: '# Eliška Nováková\n' },
+      { path: 'notes/elisk-notes.md', markdown: '# Elisk notes\n' },
+      { path: 'notes/sarka.md', markdown: '# Šárka\n' },
+      { path: 'notes/body.md', markdown: '# Unrelated\nEliška is only in the body.\n' },
+      { path: 'templates/eliska.md', markdown: '# Eliška template\n' },
+    ])
+    const suggestions = createSuggestionService({ database })
+    const paths = async (query: string) => {
+      const rows = await suggestions.suggestWikiTargets(query)
+      return rows.map((row) => row.path)
+    }
+
+    await expect(paths('elisk')).resolves.toEqual(['notes/elisk-notes.md', 'notes/eliska.md'])
+    await expect(paths('eliska nov')).resolves.toEqual(['notes/eliska.md'])
+    await expect(paths('nova eliska')).resolves.toEqual([])
+    // A single character only matches as spelled.
+    await expect(paths('s')).resolves.toEqual(['notes/elisk-notes.md'])
+  })
 })

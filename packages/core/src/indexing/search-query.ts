@@ -79,6 +79,15 @@ export function buildFtsMatch(query: string): string | null {
 }
 
 /**
+ * Build an FTS5 `MATCH` expression for titles containing `text` as a phrase
+ * whose last word may be a prefix, or `null` when `unicode61` finds no token
+ * in it. The tokenizer drops diacritics, so `elisk` matches `Eliška`.
+ */
+export function buildFtsTitlePrefixMatch(text: string): string | null {
+  return isTokenizable(text) ? `title : ${quoteFtsLiteral(text)}*` : null
+}
+
+/**
  * Scripts written without spaces between words (Han, kana, Hangul, Thai, …).
  * FTS5's `unicode61` tokenizer only segments at non-alphanumeric characters,
  * so a title run in these scripts indexes as ONE token and a shorter query

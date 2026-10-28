@@ -101,6 +101,7 @@ describe('suggestWikiTargets', () => {
       { path: 'notes/eliska.md', markdown: '# Eliška Nováková\n' },
       { path: 'notes/zelisk-notes.md', markdown: '# Zelisk notes\n' },
       { path: 'notes/sarka.md', markdown: '# Šárka\n' },
+      { path: 'notes/istanbul.md', markdown: '# Istanbul trip\n' },
       { path: 'notes/body.md', markdown: '# Unrelated\nEliška is only in the body.\n' },
       { path: 'templates/eliska.md', markdown: '# Eliška template\n' },
     ])
@@ -115,8 +116,12 @@ describe('suggestWikiTargets', () => {
     await expect(paths('elisk')).resolves.toEqual(['notes/zelisk-notes.md', 'notes/eliska.md'])
     await expect(paths('eliska nov')).resolves.toEqual(['notes/eliska.md'])
     await expect(paths('nova eliska')).resolves.toEqual([])
-    // A one-letter prefix only matches as spelled, punctuation aside.
-    await expect(paths('s')).resolves.toEqual(['notes/zelisk-notes.md'])
+    // A one-letter prefix only matches as typed; to the index, `s-` is one letter.
+    await expect(paths('s')).resolves.toEqual(['notes/istanbul.md', 'notes/zelisk-notes.md'])
     await expect(paths('s-')).resolves.toEqual([])
+    // `İ` lowercases to `i` plus a combining dot, which the index drops, but
+    // the one-letter guard treats the dot as a separator.
+    await expect(paths('İst')).resolves.toEqual(['notes/istanbul.md'])
+    await expect(paths('İs')).resolves.toEqual([])
   })
 })

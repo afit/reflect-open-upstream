@@ -21,6 +21,9 @@ export const queryKeys = {
     allNotesTags(root: GraphRoot) {
       return [...this.graph(root), 'all-notes-tags'] as const
     },
+    noteGraph(root: GraphRoot) {
+      return [...this.graph(root), 'note-graph'] as const
+    },
     paletteSuggestions(
       root: GraphRoot,
       options: { text: string; dateFormat: string; weekStartDay: string; today: string },

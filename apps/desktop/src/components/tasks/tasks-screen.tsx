@@ -7,7 +7,7 @@ import {
   useState,
   type ReactElement,
 } from 'react'
-import { Archive, CalendarClock, List, Search } from 'lucide-react'
+import { Archive, CalendarClock, List } from 'lucide-react'
 import {
   composeVisibleTaskGroups,
   getTaskKey,
@@ -17,7 +17,7 @@ import {
   type TaskGroup,
 } from '@reflect/core'
 import { Button } from '@/components/ui/button.tsx'
-import { Input } from '@/components/ui/input.tsx'
+import { HeaderSearchInput } from '@/components/header-search-input.tsx'
 import { useNoteLinkNavigation, type ModClickEvent } from '@/hooks/use-note-link-navigation.ts'
 import { useRecentlyCompleted } from '@/lib/tasks/recently-completed.ts'
 import { scrollTaskIntoView } from '@/lib/tasks/task-navigation.ts'
@@ -244,19 +244,12 @@ export function TasksScreen(): ReactElement {
       className="flex h-full min-h-0 flex-col outline-none"
     >
       <header className="flex flex-none items-center gap-2 border-b border-border py-2.5 pl-2 pr-3 lg:pl-10">
-        <div className="window-drag-control min-w-0 flex-1">
-          <Search
-            aria-hidden
-            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-text-muted"
-          />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search..."
-            aria-label="Search tasks"
-            className="h-9 border-none bg-transparent pl-8 shadow-none focus-visible:ring-0"
-          />
-        </div>
+        <HeaderSearchInput
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search..."
+          aria-label="Search tasks"
+        />
         {selection.selectedCount > 0 ? (
           <TaskScheduleCalendar
             open={scheduleOpen}

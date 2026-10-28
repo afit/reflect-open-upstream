@@ -198,6 +198,7 @@ import {
 } from './indexing/index-lifecycle-service.ts'
 import { createIndexQueryService, type IndexQueryService } from './indexing/index-query-service.ts'
 import { createNoteListService, type NoteListService } from './indexing/note-list-service.ts'
+import { createNoteGraphService, type NoteGraphService } from './indexing/note-graph-service.ts'
 import { createNotePathService, type NotePathService } from './indexing/note-path-service.ts'
 import { createSearchService, type SearchService } from './indexing/search-service.ts'
 import { createSuggestionService, type SuggestionService } from './indexing/suggestion-service.ts'
@@ -437,6 +438,10 @@ export interface CoreServices {
    */
   readonly noteList: NoteListService
   /**
+   * Every note and resolved link, for the Explore screen.
+   */
+  readonly noteGraph: NoteGraphService
+  /**
    * Readable, collision-free paths for note and template titles.
    */
   readonly notePath: NotePathService
@@ -618,6 +623,7 @@ export const coreServiceFactories = {
   search: createSearchService,
   suggestions: createSuggestionService,
   noteList: createNoteListService,
+  noteGraph: createNoteGraphService,
   graphStats: createGraphStatsService,
   notePath: createNotePathService,
   indexStore: createIndexStoreService,
@@ -932,6 +938,7 @@ export function composeCoreServices(
   const search = create.search({ database, wikiResolver })
   const suggestions = create.suggestions({ database })
   const noteList = create.noteList({ database })
+  const noteGraph = create.noteGraph({ database })
   const graphStats = create.graphStats({ database })
   const notePath = create.notePath({ database, noteFile })
   const indexStore = create.indexStore({ ipc, database })
@@ -1294,6 +1301,7 @@ export function composeCoreServices(
     backlinks,
     search,
     noteList,
+    noteGraph,
     notePath,
     noteCreation,
     indexLifecycle,

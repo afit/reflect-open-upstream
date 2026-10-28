@@ -18,6 +18,8 @@ export type Route =
   | { kind: 'search'; query: string }
   | { kind: 'tasks' }
   | { kind: 'chat' }
+  // The note graph view (Plan 25). Desktop only; mobile renders Today.
+  | { kind: 'explore' }
   | { kind: 'settings' }
   // The graph-switcher screen — a mobile settings sub-screen; desktop renders
   // it as the settings screen (its switcher lives in the sidebar footer).
@@ -42,6 +44,7 @@ export function routesEqual(a: Route, b: Route): boolean {
     case 'today':
     case 'tasks':
     case 'chat':
+    case 'explore':
     case 'settings':
     case 'graphs':
     case 'licenses':

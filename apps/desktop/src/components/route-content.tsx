@@ -13,6 +13,10 @@ const ChatScreen = lazy(async () => {
   const { ChatScreen } = await import('@/components/chat/chat-screen.tsx')
   return { default: ChatScreen }
 })
+const ExploreScreen = lazy(async () => {
+  const { ExploreScreen } = await import('@/components/explore/explore-screen.tsx')
+  return { default: ExploreScreen }
+})
 const SettingsRoute = lazy(async () => {
   const { SettingsRoute } = await import('@/components/settings/settings-route.tsx')
   return { default: SettingsRoute }
@@ -57,6 +61,8 @@ function RouteContentBody(): ReactElement {
       // Owns its scroll container (the message list pins to the bottom while
       // streaming), so no ScrollRestored wrapper — same shape as All Notes.
       return <ChatScreen />
+    case 'explore':
+      return <ExploreScreen />
     // The graph-switcher and licenses routes are mobile settings sub-screens.
     // On desktop, graph switching lives in the sidebar footer and licenses
     // open in a dialog, so both render as settings.

@@ -173,6 +173,12 @@ export {
   type WikiResolverService,
 } from './indexing/wiki-resolver-service.ts'
 export { type BacklinkService } from './indexing/backlink-service.ts'
+export {
+  type NoteGraph,
+  type NoteGraphLink,
+  type NoteGraphNode,
+  type NoteGraphService,
+} from './indexing/note-graph-service.ts'
 export { createSearchService, type SearchService } from './indexing/search-service.ts'
 export { createSuggestionService, type SuggestionService } from './indexing/suggestion-service.ts'
 export {

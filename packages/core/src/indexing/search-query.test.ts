@@ -1,10 +1,54 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildFtsGroupsMatch,
   buildFtsMatch,
   buildFtsTitlePrefixMatch,
   containsUnsegmentedScript,
   titleRecallNeedles,
 } from './search-query.ts'
+
+/** One word's prefix clause over title and body. */
+function word(term: string): string {
+  return `(title : "${term}"* OR body : "${term}"*)`
+}
+
+describe('buildFtsGroupsMatch', () => {
+  it('ORs the alternatives in a group and ANDs the groups', () => {
+    expect(buildFtsGroupsMatch([['Andy', 'Bob'], ['pricing']])).toBe(
+      `((${word('Andy')}) OR (${word('Bob')})) AND ((${word('pricing')}))`,
+    )
+  })
+
+  it('requires every word of a multi-word alternative', () => {
+    expect(buildFtsGroupsMatch([['community offer']])).toBe(
+      `((${word('community')} AND ${word('offer')}))`,
+    )
+  })
+
+  it('quotes operator-like input as plain words', () => {
+    expect(buildFtsGroupsMatch([['OR', 'say "hi"']])).toBe(
+      `((${word('OR')}) OR (${word('say')} AND (title : """hi"""* OR body : """hi"""*)))`,
+    )
+  })
+
+  it('drops untokenizable alternatives', () => {
+    expect(buildFtsGroupsMatch([['--', 'Andy']])).toBe(`((${word('Andy')}))`)
+  })
+
+  it('returns null when any group is left empty, rather than widening the match', () => {
+    expect(buildFtsGroupsMatch([['Andy'], ['...', '—']])).toBeNull()
+    expect(buildFtsGroupsMatch([])).toBeNull()
+  })
+
+  it('matches words ending in a one-character token exactly, never as a widening prefix', () => {
+    expect(buildFtsGroupsMatch([['R&D', 'Andy']])).toBe(
+      `(((title : "R&D" OR body : "R&D")) OR (${word('Andy')}))`,
+    )
+    expect(buildFtsGroupsMatch([["Bob's farm"]])).toBe(
+      `(((title : "Bob's" OR body : "Bob's") AND ${word('farm')}))`,
+    )
+  })
+})
 
 describe('buildFtsMatch', () => {
   it('returns null for an empty or whitespace-only query', () => {
